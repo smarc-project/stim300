@@ -1,104 +1,16 @@
-[![Build Status](https://travis-ci.com/vortexntnu/stim300.svg?branch=master)](https://travis-ci.com/vortexntnu/stim300)
-
-# STIM 300
-https://www.sensonor.com/products/inertial-measurement-units/stim300/
-
-Run with:
-
-    rosrun driver_stim300 stim300_driver_node
-
+# Stim 300
+To run the node:
+```
+ros2 run stim300 stim300_driver
+```
 or
-
-    roslaunch driver_stim300 stim300_driver.launch
-    
-see launch file for available parameters.
-
-## Communicate with STIM300 over terminal
-For testing and configuration during development it can be useful to comunicate with the STIM300 IMU directly over terminal.
-Here is a simple example for how to that using minicom.
-
-Install minicom:
-
-    sudo apt-get install minicom
-
-Look for device:
-
-    dmesg | grep tty
-
-Open minicom with setings:
-
-    sudo minicom -s
-
-Setup minicom for stim300:
-
-Serial port setup:
-
-    A - Serial Device: /dev/ttyUSB0
-    E - 921600 8N1
-    F - Disable hardware flow control
-
-Modem and dialing: (Clear option A...I)
-
-    A -
-    * -
-    * -
-    * -
-    I -
-
-Screen and keyboard:
-
-    P - Add linefeed
-
-Save setup as dfl then Exit minicom, and enter again in hex display mode:
-
-    sudo minicom -H
-
-The stim300 is in normal mode and will reapeatidly send the standard datagram.
-
-Enter service mode: write "SERVICEMODE" and press enter
-
-    SERVICEMODE
-
-Clear the screen:
-
-    Ctrl-A c
-
-If the incomming datagram feed stopped it means you enter service mode sucsessfully. While in service mode the stim 300 will comunicate with asci characters. Exit minicom and enter in normal ASCI mode:
-
-    Ctrl-A x
-    sudo minicom
-
-Write ? and press enter, and the STIM300 should send info about available commands
-
-    ?
-
-This will show a list on available commands including how to go back to normal mode. For example:
-
-    c
-
- will perform a system check.
- 
- ## Calibration 
- 
-The following commands are used to calibrate the stim300 driver with the ESKF (Error-state Kalman filter)
-
-First launch the stim300 driver
-
-```bash
-roslaunch driver_stim300 stim300_driver.launch
 ```
-
-Then move to another terminal and do the following
-
-```bash
-rosservice call /IMU_calibration
+ros2 launch stim300 stim300_driver.launch
 ```
+Check the launch file for available parameters.
 
-Now head over to the stim300-driver.launch terminal window and take note of the roll and pitch alignment errors.
-
-Find the parameter list for the ESKF and put in the roll and pitch errors in the following parameters
-
-```bash
-sr_accelerometer_alignment 
-sr_gyro_alignment
+<!-- # Calibration
+The following commands are used to calibrate the stim300
 ```
+ros2 launch stim300 stim300_driver.launch 
+``` -->

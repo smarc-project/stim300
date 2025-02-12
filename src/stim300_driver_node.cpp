@@ -1,11 +1,13 @@
 #include "driver_stim300.h"
 #include "serial_unix.h"
 #include "math.h"
-#include "ros/ros.h"
-#include "sensor_msgs/Imu.h"
-#include "std_srvs/Trigger.h"
-#include "std_srvs/Empty.h"
+#include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/imu.hpp"
+#include "std_srvs/srv/trigger.hpp"
+#include "std_srvs/srv/empty.hpp"
 #include "iostream"
+#include "sam_msgs/msg/topics.hpp"
+#include "sam_msgs/msg/links.hpp"
 
 bool calibration_mode{false};
 constexpr int NUMBER_OF_CALIBRATION_SAMPLES{100};
@@ -49,14 +51,14 @@ Quaternion FromRPYToQuaternion(EulerAngles angles) // yaw (Z), pitch (Y), roll (
 }
 
 
-bool responseCalibrateIMU(std_srvs::Trigger::Request &calibration_request, std_srvs::Trigger::Response &calibration_response)
+bool responseCalibrateIMU(std::shared_ptr<std_srvs::srv::Trigger::Request >calibration_request, std::shared_ptr<std_srvs::srv::Trigger::Response >calibration_response)
 {
 
     if (calibration_mode == false)
     {
         calibration_mode = true;
-        calibration_response.message = "IMU in calibration mode ";
-        calibration_response.success = true;
+        calibration_response->message = "IMU in calibration mode ";
+        calibration_response->success = true;
     }
     
     return true;
@@ -65,9 +67,9 @@ bool responseCalibrateIMU(std_srvs::Trigger::Request &calibration_request, std_s
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "stim300_driver_node");
+  rclcpp::init(argc, argv);
 
-  ros::NodeHandle node("~");
+  auto node = rclcpp::Node::make_shared("stim300_driver_node");
 
   std::string device_name, imu_frame, imu_output;
   // double variance_gyro{0};
@@ -77,14 +79,23 @@ int main(int argc, char** argv)
 
   // node.param("variance_gyro", variance_gyro,0.0001*2*4.6*pow(10,-4));
   // node.param("variance_acc", variance_acc, 0.000055); 
-  node.param<std::string>("device_name", device_name, "/dev/ttyUSB0");
-  node.param("sample_rate", sample_rate, 125);
-  node.param("gravity", gravity, 9.80665);
-  node.param<std::string>("imu_output", imu_output, "stim_imu");
-  node.param<std::string>("imu_frame", imu_frame, "imu_link");
+  // node.param<std::string>("device_name", device_name, "/dev/ttyUSB0");
+  // node.param("sample_rate", sample_rate, 125);
+  // node.param("gravity", gravity, 9.80665);
+  // node.param<std::string>("imu_output", imu_output, "stim_imu");
+  // node.param<std::string>("imu_frame", imu_frame, "imu_link");
+
+  device_name = node -> declare_parameter("device_name", "/dev/ttyUSB0");
+  sample_rate = node -> declare_parameter("sample_rate", 125);
+  gravity = node -> declare_parameter("gravity", 9.80665);
+
+
+
+
+
 
   // These values have been estimated by having beluga in a pool for a couple of minutes, and then calculate the variance for each values
-  sensor_msgs::Imu stim300msg{};
+  sensor_msgs::msg::Imu stim300msg{};
   stim300msg.angular_velocity_covariance[0] = 0.0000027474;
   stim300msg.angular_velocity_covariance[4] = 0.0000027474;
   stim300msg.angular_velocity_covariance[8] = 0.000007312;
@@ -94,11 +105,13 @@ int main(int argc, char** argv)
   stim300msg.orientation.x = 0.00000024358;
   stim300msg.orientation.y = 0.00000024358;
   stim300msg.orientation.z = 0.00000024358;
-  stim300msg.header.frame_id = imu_frame;
+  stim300msg.header.frame_id = sam_msgs::msg::Links::IMU_LINK;
 
-  ros::Publisher imuSensorPublisher = node.advertise<sensor_msgs::Imu>(imu_output, 1000);
+  // ros::Publisher imuSensorPublisher = node.advertise<sensor_msgs::Imu>(imu_output, 1000);
+  auto imuSensorPublisher = node->create_publisher<sensor_msgs::msg::Imu>(sam_msgs::msg::Topics::STIM_IMU_TOPIC, 1000);
   //ros::Publisher orientationPublisher = node.advertise<sensor_msgs::Imu>("imu/orientation", 1000);
-  ros::ServiceServer service = node.advertiseService("IMU_calibration",responseCalibrateIMU);
+  // ros::ServiceServer service = node.advertiseService("IMU_calibration",responseCalibrateIMU);
+  auto service = node->create_service<std_srvs::srv::Trigger>(sam_msgs::msg::Topics::IMU_CALIBRATION_SERVICE, responseCalibrateIMU);
 
 
   // New messages are sent from the sensor with sample_rate
@@ -108,13 +121,14 @@ int main(int argc, char** argv)
   // ros::Rate loop_rate(sample_rate*2);
   
   // Nacho: we don't do that
-  ros::Rate loop_rate(sample_rate);
+  auto loop_rate = std::make_unique<rclcpp::Rate>(sample_rate);
 
   try {
     SerialUnix serial_driver(device_name, stim_const::BaudRate::BAUD_921600);
     DriverStim300 driver_stim300(serial_driver);
 
-    ROS_INFO("STIM300 IMU driver initialized successfully");
+    // ROS_INFO("STIM300 IMU driver initialized successfully");
+    RCLCPP_INFO(node->get_logger(), "STIM300 IMU driver initialized successfully");
 
     int difference_in_dataGram{0};
     int count_messages{0};
@@ -149,14 +163,14 @@ int main(int argc, char** argv)
     double dropped_gyro_z_msg{0.0};
 
   
-    while (ros::ok())
+    while (rclcpp::ok())
     {
       switch (driver_stim300.update())
       {
         case Stim300Status::NORMAL:
           break;
         case Stim300Status::OUTSIDE_OPERATING_CONDITIONS:
-          ROS_DEBUG("Stim 300 outside operating conditions");
+            RCLCPP_DEBUG(node ->get_logger(), "Stim 300 outside operating conditions");
           break;
         case Stim300Status::NEW_MEASURMENT:
               inclination_x = driver_stim300.getIncX();
@@ -188,9 +202,10 @@ int main(int argc, char** argv)
                     average_calibration_pitch = atan2(-inclination_x_average,sqrt(pow(inclination_y_average,2)+pow(inclination_z_average,2)));
                     std::cout<<average_calibration_roll<<std::endl;
                     std::cout<<average_calibration_pitch<<std::endl;
-                    ROS_INFO("roll: %f", average_calibration_roll);
-                    ROS_INFO("pitch: %f", average_calibration_pitch);
-                    ROS_INFO("IMU Calibrated");
+                    RCLCPP_INFO(node->get_logger(), "roll: %f", average_calibration_roll);
+                    RCLCPP_INFO(node->get_logger(), "pitch: %f", average_calibration_pitch);
+                    RCLCPP_INFO(node->get_logger(), "IMU Calibrated");
+
                     calibration_mode = false;
                 }
               break;  
@@ -208,7 +223,7 @@ int main(int argc, char** argv)
                     acceleration_buffer_x.push_back(driver_stim300.getAccX() * gravity);
                     acceleration_buffer_y.push_back(driver_stim300.getAccY() * gravity);
                     acceleration_buffer_z.push_back(driver_stim300.getAccZ() * gravity);
-                    stim300msg.header.stamp = ros::Time::now();
+                    stim300msg.header.stamp = node ->get_clock()->now();
 
                     if (acceleration_buffer_x.size() == 2 && acceleration_buffer_y.size() == 2 && acceleration_buffer_z.size() == 2)
                     {
@@ -219,7 +234,8 @@ int main(int argc, char** argv)
                       }
                       else
                       {
-                        ROS_DEBUG("ACC_X_MSG wild point rejected");
+                        // ROS_DEBUG("ACC_X_MSG wild point rejected");
+                        RCLCPP_DEBUG(node->get_logger(),"ACC_X_MSG wild point rejected");
                         dropped_acceleration_x_msg +=1;
                       }
 
@@ -230,7 +246,8 @@ int main(int argc, char** argv)
                       }
                       else
                       {
-                        ROS_DEBUG("ACC_Y_MSG wild point rejected");
+                        // ROS_DEBUG("ACC_Y_MSG wild point rejected");
+                        RCLCPP_DEBUG(node->get_logger(),"ACC_Y_MSG wild point rejected");
                         dropped_acceleration_y_msg +=1;
                       }
 
@@ -241,7 +258,8 @@ int main(int argc, char** argv)
                       }
                       else
                       {
-                        ROS_DEBUG("ACC_Z_MSG wild point rejected");
+                        // ROS_DEBUG("ACC_Z_MSG wild point rejected");
+                        RCLCPP_DEBUG(node->get_logger(),"ACC_Z_MSG wild point rejected");
                         dropped_acceleration_z_msg +=1;
                       }
                       // Empty acceleration buffers
@@ -271,7 +289,8 @@ int main(int argc, char** argv)
                       }
                       else
                       {
-                        ROS_DEBUG("GYRO_X_MSG wild point rejected");
+                        // ROS_DEBUG("GYRO_X_MSG wild point rejected");
+                        RCLCPP_DEBUG(node->get_logger(),"GYRO_X_MSG wild point rejected");
                         dropped_gyro_x_msg += 1;
                       }
 
@@ -282,7 +301,8 @@ int main(int argc, char** argv)
                       }
                       else
                       {
-                        ROS_DEBUG("GYRO_Y_MSG wild point rejected");
+                        // ROS_DEBUG("GYRO_Y_MSG wild point rejected");
+                        RCLCPP_DEBUG(node->get_logger(),"GYRO_Y_MSG wild point rejected");
                         dropped_gyro_y_msg += 1;
                       }
 
@@ -293,7 +313,8 @@ int main(int argc, char** argv)
                       }
                       else
                       {
-                        ROS_DEBUG("GYRO_Z_MSG wild point rejected");
+                        // ROS_DEBUG("GYRO_Z_MSG wild point rejected");
+                        RCLCPP_DEBUG(node->get_logger(),"GYRO_Z_MSG wild point rejected");
                         dropped_gyro_z_msg += 1;
                       }
 
@@ -312,39 +333,50 @@ int main(int argc, char** argv)
                     stim300msg.orientation.x = q.x;
                     stim300msg.orientation.y = q.y;
                     stim300msg.orientation.z = q.z;
-                    imuSensorPublisher.publish(stim300msg);
+                    imuSensorPublisher->publish(stim300msg);
                     break;
             }
-        case Stim300Status::CONFIG_CHANGED:
-          ROS_INFO("Updated Stim 300 imu config: ");
-          ROS_INFO("%s", driver_stim300.printSensorConfig().c_str());
-          // loop_rate = driver_stim300.getSampleRate()*2;
-          loop_rate = driver_stim300.getSampleRate();
-          break;
-        case Stim300Status::STARTING_SENSOR:
-          ROS_INFO("Stim 300 IMU is warming up.");
-          break;
-        case Stim300Status::SYSTEM_INTEGRITY_ERROR:
-          ROS_WARN("Stim 300 IMU system integrity error.");
-          break;
-        case Stim300Status::OVERLOAD:
-          ROS_WARN("Stim 300 IMU overload.");
-          break;
-        case Stim300Status::ERROR_IN_MEASUREMENT_CHANNEL:
-          ROS_WARN("Stim 300 IMU error in measurement channel.");
-          break;
-        case Stim300Status::ERROR:
-          ROS_WARN("Stim 300 IMU: internal error.");
+            case Stim300Status::CONFIG_CHANGED:
+              RCLCPP_INFO(node->get_logger(), "Updated Stim 300 imu config: ");
+              RCLCPP_INFO(node->get_logger(), "%s", driver_stim300.printSensorConfig().c_str());
+              // loop_rate = driver_stim300.getSampleRate()*2;
+              // loop_rate = rclcpp::Rate(driver_stim300.getSampleRate());
+              // loop_rate = rclcpp::Rate(node->get_clock(), driver_stim300.getSampleRate());
+              loop_rate= std::make_unique<rclcpp::Rate>(driver_stim300.getSampleRate());
+
+
+              break;
+
+            case Stim300Status::STARTING_SENSOR:
+              RCLCPP_INFO(node->get_logger(), "Stim 300 IMU is warming up.");
+              break;
+
+            case Stim300Status::SYSTEM_INTEGRITY_ERROR:
+              RCLCPP_WARN(node->get_logger(), "Stim 300 IMU system integrity error.");
+              break;
+
+            case Stim300Status::OVERLOAD:
+              RCLCPP_WARN(node->get_logger(), "Stim 300 IMU overload.");
+              break;
+
+            case Stim300Status::ERROR_IN_MEASUREMENT_CHANNEL:
+              RCLCPP_WARN(node->get_logger(), "Stim 300 IMU error in measurement channel.");
+              break;
+
+            case Stim300Status::ERROR:
+              RCLCPP_WARN(node->get_logger(), "Stim 300 IMU: internal error.");
+              break;
+
 
       }
 
-      loop_rate.sleep();
-      ros::spinOnce();
+      loop_rate->sleep();  
+      rclcpp::spin_some(node);
     }
     return 0;
   } catch (std::runtime_error &error) {
     // TODO: Reset IMU
-    ROS_ERROR("%s\n", error.what());
+        RCLCPP_ERROR(node->get_logger(), "%s\n", error.what());
     return 0;
   }
 }

@@ -1,7 +1,10 @@
 <launch>
-  <node name="stim300driver" pkg="driver_stim300" type="stim300_driver_node" />
-  <param name = "device_name" value="/dev/ttyUSB0" type="string" />
-  <param name = "stanard_deviation_of_gyro" value="0.0004" type="double" />
-  <param name = "stanard_deviation_of_acc" value="0.004" type="double" />
-  <param name = "sample_rate" value="125" type="double" />
+    <arg name="robot_name" default="sam" />
+    <node pkg="stim300" exec="stim300_driver" name="stim300_driver" output="screen" namespace = "$(var robot_name)">
+        <param name = "device_name" value="/dev/ttyUSB0" />
+        <param name =  "stanard_deviation_of_gyro" value="0.0004" />
+        <param name = "stanard_deviation_of_acc" value="0.004" />
+        <param name = "sample_rate" value = "125" />
+
+    </node>
 </launch>
