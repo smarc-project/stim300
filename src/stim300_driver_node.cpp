@@ -111,7 +111,7 @@ int main(int argc, char** argv)
   auto imuSensorPublisher = node->create_publisher<sensor_msgs::msg::Imu>(sam_msgs::msg::Topics::STIM_IMU_TOPIC, 1000);
   //ros::Publisher orientationPublisher = node.advertise<sensor_msgs::Imu>("imu/orientation", 1000);
   // ros::ServiceServer service = node.advertiseService("IMU_calibration",responseCalibrateIMU);
-  auto service = node->create_service<std_srvs::srv::Trigger>(sam_msgs::msg::Topics::IMU_CALIBRATION_SERVICE, responseCalibrateIMU);
+  auto service = node->create_service<std_srvs::srv::Trigger>(sam_msgs::msg::Topics::STIM_CALIBRATION_SRV, responseCalibrateIMU);
 
 
   // New messages are sent from the sensor with sample_rate
