@@ -173,9 +173,9 @@ int main(int argc, char** argv)
             RCLCPP_DEBUG(node ->get_logger(), "Stim 300 outside operating conditions");
           break;
         case Stim300Status::NEW_MEASURMENT:
-              inclination_x = driver_stim300.getIncX();
-              inclination_y = driver_stim300.getIncY();
-              inclination_z = driver_stim300.getIncZ();
+              inclination_x = - driver_stim300.getIncX();
+              inclination_y = - driver_stim300.getIncY();
+              inclination_z = - driver_stim300.getIncZ();
               Quaternion q;
               EulerAngles RPY;
            if (calibration_mode == true)
@@ -198,8 +198,8 @@ int main(int argc, char** argv)
                     inclination_y_average = inclination_y_calibration_sum/NUMBER_OF_CALIBRATION_SAMPLES;
                     inclination_z_average = inclination_z_calibration_sum/NUMBER_OF_CALIBRATION_SAMPLES;
 
-                    average_calibration_roll = atan2(inclination_y_average,inclination_z_average);
-                    average_calibration_pitch = atan2(-inclination_x_average,sqrt(pow(inclination_y_average,2)+pow(inclination_z_average,2)));
+                    average_calibration_roll = atan2(-inclination_y_average,-inclination_z_average);
+                    average_calibration_pitch = atan2(inclination_x_average,sqrt(pow(inclination_y_average,2)+pow(inclination_z_average,2)));
                     std::cout<<average_calibration_roll<<std::endl;
                     std::cout<<average_calibration_pitch<<std::endl;
                     RCLCPP_INFO(node->get_logger(), "roll: %f", average_calibration_roll);
@@ -212,17 +212,19 @@ int main(int argc, char** argv)
             }
             else
             {
-                    RPY.roll = atan2(inclination_y,inclination_z);
-                    RPY.pitch = atan2(-inclination_x,sqrt(pow(inclination_y,2)+pow(inclination_z,2)));
+                    RPY.roll = atan2(-inclination_y,-inclination_z);
+                    RPY.pitch = atan2(inclination_x,sqrt(pow(inclination_y,2)+pow(inclination_z,2)));
                     RPY.yaw = 0.;
+                    RCLCPP_INFO(node->get_logger(),"roll: %f and pitch %f", RPY.roll, RPY.pitch);
+
                     q = FromRPYToQuaternion(RPY);
 
                     // Acceleration wild point filter
 
                     // Previous message
-                    acceleration_buffer_x.push_back(driver_stim300.getAccX() * gravity);
-                    acceleration_buffer_y.push_back(driver_stim300.getAccY() * gravity);
-                    acceleration_buffer_z.push_back(driver_stim300.getAccZ() * gravity);
+                    acceleration_buffer_x.push_back(- driver_stim300.getAccX() * gravity);
+                    acceleration_buffer_y.push_back(- driver_stim300.getAccY() * gravity);
+                    acceleration_buffer_z.push_back(- driver_stim300.getAccZ() * gravity);
                     stim300msg.header.stamp = node ->get_clock()->now();
 
                     if (acceleration_buffer_x.size() == 2 && acceleration_buffer_y.size() == 2 && acceleration_buffer_z.size() == 2)
@@ -269,15 +271,15 @@ int main(int argc, char** argv)
                     }
                     else
                     {
-                      stim300msg.linear_acceleration.x = driver_stim300.getAccX() * gravity;
-                      stim300msg.linear_acceleration.y = driver_stim300.getAccY() * gravity;
-                      stim300msg.linear_acceleration.z = driver_stim300.getAccZ() * gravity;
+                      stim300msg.linear_acceleration.x = - driver_stim300.getAccX() * gravity;
+                      stim300msg.linear_acceleration.y = - driver_stim300.getAccY() * gravity;
+                      stim300msg.linear_acceleration.z = - driver_stim300.getAccZ() * gravity;
                     }
 
                     // Gyro wild point filter
-                    gyro_buffer_x.push_back(driver_stim300.getGyroX());
-                    gyro_buffer_y.push_back(driver_stim300.getGyroY());
-                    gyro_buffer_z.push_back(driver_stim300.getGyroZ());
+                    gyro_buffer_x.push_back(- driver_stim300.getGyroX());
+                    gyro_buffer_y.push_back(- driver_stim300.getGyroY());
+                    gyro_buffer_z.push_back(- driver_stim300.getGyroZ());
 
                     if(gyro_buffer_x.size() == 2 && gyro_buffer_y.size() == 2 && gyro_buffer_z.size() == 2)
                     {
@@ -325,9 +327,9 @@ int main(int argc, char** argv)
                     }
                     else
                     {
-                      stim300msg.angular_velocity.x = driver_stim300.getGyroX();
-                      stim300msg.angular_velocity.y = driver_stim300.getGyroY();
-                      stim300msg.angular_velocity.z = driver_stim300.getGyroZ();
+                      stim300msg.angular_velocity.x = - driver_stim300.getGyroX();
+                      stim300msg.angular_velocity.y = - driver_stim300.getGyroY();
+                      stim300msg.angular_velocity.z = - driver_stim300.getGyroZ();
                     }
                     stim300msg.orientation.w = q.w;
                     stim300msg.orientation.x = q.x;
