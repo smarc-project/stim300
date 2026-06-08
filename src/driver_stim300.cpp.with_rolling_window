@@ -25,7 +25,7 @@ DriverStim300::DriverStim300(SerialDriver &serial_driver,
                                                               acc_range} {}
 
 DriverStim300::DriverStim300(SerialDriver &serial_driver)
-    : DriverStim300(serial_driver, DatagramIdentifier::CONFIGURATION,
+    : DriverStim300(serial_driver, DatagramIdentifier::RATE_ACC_INCL,
                     GyroOutputUnit::AVERAGE_ANGULAR_RATE,
                     AccOutputUnit::AVERAGE_ACCELERATION,
                     InclOutputUnit::AVERAGE_ACCELERATION, AccRange::G5,
@@ -92,7 +92,7 @@ Stim300Status DriverStim300::readDataStream() {
       
       // Handle CRLF terminated packets (config packets)
       if (potential_header == datagramIdentifierToRaw(DatagramIdentifier::CONFIGURATION_CRLF) ||
-          (sensor_config_.normal_datagram_CRLF && potential_header == datagram_id_ && potential_header != 0xBC)) {
+          (sensor_config_.normal_datagram_CRLF && potential_header == datagram_id_)) {
         
         // For CRLF packets, look for CR LF terminator
         size_t search_end = std::min(offset + datagram_size_ + 10, sync_buffer_.size());
@@ -147,10 +147,9 @@ Stim300Status DriverStim300::readDataStream() {
                       sync_buffer_.begin() + offset + datagram_size_);
         
         // Verify CRC before committing to this sync point
-        if (verifyChecksum(buffer_.cbegin(), buffer_.cend(), crc_dummy_bytes_)) { 
-          // std::cerr << "STIM300: CRC passed for header 0x" << std::hex << (int)potential_header << std::dec << std::endl;
+        if (verifyChecksum(buffer_.cbegin(), buffer_.cend(), crc_dummy_bytes_)) {
           
-          // std::cerr << "STIM300: Valid packet found! Header=0x" << std::hex << (int)potential_header << std::dec << " at offset " << offset << std::endl;
+          std::cerr << "STIM300: Valid packet found! Header=0x" << std::hex << (int)potential_header << std::dec << " at offset " << offset << std::endl;
           
           // Valid packet found! Update format if needed
           if (potential_header != datagram_id_) {
@@ -165,41 +164,26 @@ Stim300Status DriverStim300::readDataStream() {
           // Reset sync error counter
           n_checked_bytes = 0;
           
-          // Check if this is a CONFIG packet or MEASUREMENT packet
-          if (potential_header == 0xBC || potential_header == 0xBD) {
-            // Process CONFIG packet
-            std::cerr << "STIM300: Processing config packet..." << std::endl;
-            stim_300::SensorConfig sensor_config = datagram_parser_.parseConfig(buffer_.cbegin());
-            Stim300Status status = (sensor_config != sensor_config_) ? Stim300Status::CONFIG_CHANGED : Stim300Status::NORMAL;
-            sensor_config_ = sensor_config;
-            setDatagramFormat(sensor_config_.datagram_id);  // Switch to detected format!
-            datagram_parser_.setDataParameters(sensor_config_);
-            read_config_from_sensor_ = false;  // Stop requesting config
-            std::cerr << "STIM300: Configuration received! Switching to format: 0x" 
-                      << std::hex << (int)datagram_id_ << std::dec << std::endl;
-            return status;
-          } else {
-            // Process MEASUREMENT packet
-            sensor_status_ = datagram_parser_.parseData(buffer_.cbegin(), sensor_data_);
-            
-            // Return appropriate status based on sensor status bits
-            if (sensor_status_ == 0)
-              return Stim300Status::NEW_MEASURMENT;
-            else if (sensor_status_ & (1u << 6u))
-              return Stim300Status::STARTING_SENSOR;
-            else if (sensor_status_ & (1u << 7u))
-              return Stim300Status::SYSTEM_INTEGRITY_ERROR;
-            else if (sensor_status_ & (1u << 5u))
-              return Stim300Status::OUTSIDE_OPERATING_CONDITIONS;
-            else if (sensor_status_ & (1u << 4u))
-              return Stim300Status::OVERLOAD;
-            else if (sensor_status_ & (1u << 3u))
-              return Stim300Status::ERROR_IN_MEASUREMENT_CHANNEL;
-            else
-              return Stim300Status::ERROR;
-          }
+          // Process the valid measurement packet
+          sensor_status_ = datagram_parser_.parseData(buffer_.cbegin(), sensor_data_);
+          
+          // Return appropriate status based on sensor status bits
+          if (sensor_status_ == 0)
+            return Stim300Status::NEW_MEASURMENT;
+          else if (sensor_status_ & (1u << 6u))
+            return Stim300Status::STARTING_SENSOR;
+          else if (sensor_status_ & (1u << 7u))
+            return Stim300Status::SYSTEM_INTEGRITY_ERROR;
+          else if (sensor_status_ & (1u << 5u))
+            return Stim300Status::OUTSIDE_OPERATING_CONDITIONS;
+          else if (sensor_status_ & (1u << 4u))
+            return Stim300Status::OVERLOAD;
+          else if (sensor_status_ & (1u << 3u))
+            return Stim300Status::ERROR_IN_MEASUREMENT_CHANNEL;
+          else
+            return Stim300Status::ERROR;
         }
-        std::cerr << "STIM300: CRC FAILED for header 0x" << std::hex << (int)potential_header << std::dec << std::endl; // If CRC failed, continue to next offset (don't consume any data)
+        // If CRC failed, continue to next offset (don't consume any data)
       }
     }
   }
@@ -229,49 +213,22 @@ void DriverStim300::askForConfigDatagram() {
   serial_driver_.writeByte('\r');
 }
 
-
 Stim300Status DriverStim300::update() noexcept {
   switch (mode_) {
   case Mode::Init:
-    // Initialize serial and request sensor configuration
     serial_driver_.flush();
-    if (read_config_from_sensor_) {
-      std::cerr << "STIM300: Requesting sensor configuration..." << std::endl;
+    if (read_config_from_sensor_)
       askForConfigDatagram();
-      mode_ = Mode::WaitingForConfig;
-    } else {
-      // Config already available, go straight to normal operation
-      mode_ = Mode::Normal; std::cerr << "STIM300: Switched to Normal mode for data packets" << std::endl;
-    }
-    return Stim300Status::NORMAL;
-    
-  case Mode::WaitingForConfig:
-    // Process incoming data looking specifically for config response
-    {
-      Stim300Status status = readDataStream();
-      if (status == Stim300Status::CONFIG_CHANGED || status == Stim300Status::NORMAL) {
-        // Check if we received and processed a config packet
-        if (!read_config_from_sensor_) {
-          std::cerr << "STIM300: Configuration received! Switching to format: 0x" 
-                    << std::hex << (int)datagram_id_ << std::dec << std::endl;
-          mode_ = Mode::Normal; std::cerr << "STIM300: Switched to Normal mode for data packets" << std::endl;
-        }
-      }
-      return status;
-    }
-    
+    mode_ = Mode::Normal;
   case Mode::Normal:
     return readDataStream();
-    
   case Mode::Service:
     // std::string s(buffer_.begin(), buffer_.end());
     // std::cout << s << "\n";
-    mode_ = Mode::Normal; std::cerr << "STIM300: Switched to Normal mode for data packets" << std::endl;
+    mode_ = Mode::Normal;
     return Stim300Status::NORMAL;
   }
-  return Stim300Status::NORMAL;
 }
-
 
 bool DriverStim300::setDatagramFormat(DatagramIdentifier id) {
   datagram_id_ = datagramIdentifierToRaw(id);

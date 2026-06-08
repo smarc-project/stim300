@@ -54,7 +54,7 @@ public:
   Stim300Status update() noexcept;
 
 private:
-  enum class Mode : uint8_t { Init, Normal, Service };
+  enum class Mode : uint8_t { Init, WaitingForConfig, Normal, Service };
   Mode mode_{Mode::Init};
   enum class ReadingMode {
     IdentifyingDatagram,
@@ -67,6 +67,7 @@ private:
   SerialDriver &serial_driver_;
   stim_300::DatagramParser datagram_parser_;
   std::vector<uint8_t> buffer_{};
+  std::vector<uint8_t> sync_buffer_{}; // Rolling window sync buffer
   size_t n_new_bytes_{0};
   size_t n_checked_bytes{0};
 

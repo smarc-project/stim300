@@ -215,7 +215,6 @@ int main(int argc, char** argv)
                     RPY.roll = atan2(-inclination_y,-inclination_z);
                     RPY.pitch = atan2(inclination_x,sqrt(pow(inclination_y,2)+pow(inclination_z,2)));
                     RPY.yaw = 0.;
-                    RCLCPP_INFO(node->get_logger(),"roll: %f and pitch %f", RPY.roll, RPY.pitch);
 
                     q = FromRPYToQuaternion(RPY);
 
